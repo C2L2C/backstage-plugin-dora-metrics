@@ -8,7 +8,7 @@ For each catalog service annotated with a GitHub repo, this plugin adds a **DORA
 - **Lead Time for Changes** — average time from PR open to merge
 - **Change Failure Rate** — percentage of deployments that were hotfixes (production only)
 - **MTTR** — mean time to recover, measured as average hotfix PR duration (production only)
-- **Hotfixes to Production** - number of hotfixes deployed to production in the given time period
+- **Hotfixes to Production** - number of hotfixes deployed to production in the given time period (production only)
 
 
 Ratings are classified as **Elite / High / Medium / Low** per DORA research benchmarks.
@@ -18,6 +18,25 @@ Ratings are classified as **Elite / High / Medium / Low** per DORA research benc
 Org-level DORA plugins aggregate metrics across all repositories in your GitHub org. This plugin instead scopes metrics to **a single catalog entity** — useful when you want to track DORA health at the service level, compare environments (e.g. production vs staging), or drill into which specific PRs are driving your lead time or failure rate. It also requires no backend: all data is fetched client-side using the user's existing GitHub OAuth session.
 
 ---
+
+## Screenshots/Videos
+
+### 1. DORA metrics dashboard
+
+![Screenshot](/assets/dashboard.png)   
+
+### 2. Deployment frquency exapnded view
+![Screenshot](/assets/DF.png)
+
+### 3. LTFC expanded view
+![Screenshot](/assets/LTFC.png)
+
+### 4. CFR expanded view
+![Screenshot](/assets/CFR.png)
+
+### 5. MTTR expanded view
+![Screenshot](/assets/MTTR.png)
+
 
 ## Requirements
 
