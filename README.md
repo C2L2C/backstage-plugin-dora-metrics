@@ -1,14 +1,19 @@
 # @c2l2c/backstage-plugin-dora-metrics
 
-A Backstage frontend plugin that displays **DORA metrics** for catalog entities using the GitHub API.
+A Backstage frontend plugin that surfaces **DORA metrics per catalog entity** — scoped to the specific service you're viewing, not your whole org.
 
-Tracks the four key DORA metrics:
-- **Deployment Frequency** — how often you deploy to a given branch
-- **Lead Time for Changes** — time from first commit to merge
-- **Change Failure Rate** — percentage of deployments causing failures (production only)
-- **MTTR** — mean time to recovery from failures (production only)
+For each catalog service annotated with a GitHub repo, this plugin adds a **DORA Metrics tab** that computes all four key metrics directly from GitHub PRs via OAuth — no extra backend or data pipeline required:
+
+- **Deployment Frequency** — how often PRs are merged to the target branch
+- **Lead Time for Changes** — average time from PR open to merge
+- **Change Failure Rate** — percentage of deployments that were hotfixes (production only)
+- **MTTR** — mean time to recover, measured as average hotfix PR duration (production only)
 
 Ratings are classified as **Elite / High / Medium / Low** per DORA research benchmarks.
+
+### How this differs from org-level DORA scorecards
+
+Org-level DORA plugins aggregate metrics across all repositories in your GitHub org. This plugin instead scopes metrics to **a single catalog entity** — useful when you want to track DORA health at the service level, compare environments (e.g. production vs staging), or drill into which specific PRs are driving your lead time or failure rate. It also requires no backend: all data is fetched client-side using the user's existing GitHub OAuth session.
 
 ---
 
