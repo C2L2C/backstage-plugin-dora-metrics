@@ -15,7 +15,7 @@ Ratings are classified as **Elite / High / Medium / Low** per DORA research benc
 
 ### How this differs from org-level DORA scorecards
 
-Org-level DORA plugins aggregate metrics across all repositories in your GitHub org. This plugin instead scopes metrics to **a single catalog entity** — useful when you want to track DORA health at the service level, compare environments (e.g. production vs staging), or drill into which specific PRs are driving your lead time or failure rate. It also requires no backend: all data is fetched client-side using the user's existing GitHub OAuth session.
+Org-level [DORA plugins](https://github.com/zc149/backstage-plugin-dora-scorecard) aggregate metrics across all repositories in your GitHub org. This plugin instead scopes metrics to **a single catalog entity** — useful when you want to track DORA health at the service level, compare environments (e.g. production vs staging), or drill into which specific PRs are driving your lead time or failure rate. It also requires no backend: all data is fetched client-side using the user's existing GitHub OAuth session.
 
 ---
 
