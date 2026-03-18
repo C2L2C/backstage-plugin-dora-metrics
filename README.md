@@ -8,6 +8,8 @@ For each catalog service annotated with a GitHub repo, this plugin adds a **DORA
 - **Lead Time for Changes** — average time from PR open to merge
 - **Change Failure Rate** — percentage of deployments that were hotfixes (production only)
 - **MTTR** — mean time to recover, measured as average hotfix PR duration (production only)
+- **Hotfixes to Production** - number of hotfixes deployed to production in the given time period
+
 
 Ratings are classified as **Elite / High / Medium / Low** per DORA research benchmarks.
 
@@ -88,6 +90,8 @@ It calculates:
 - **Lead Time**: time from PR creation to merge
 - **CFR**: percentage of PRs labelled as hotfixes (production environments only)
 - **MTTR**: average time hotfix PRs were open (production environments only)
+- **Hotfixes to Production** - number of hotfixes deployed to production in the given time period (production environments only)
+
 
 ---
 
