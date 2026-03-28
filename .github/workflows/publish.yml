@@ -22,24 +22,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          registry-url: https://registry.npmjs.org  # configures .npmrc for OIDC exchange
-          cache: yarn
-
       - name: Check if version is already published
         id: version_check
         run: |
           CURRENT=$(node -p "require('./package.json').version")
           PKG=$(node -p "require('./package.json').name")
-          PUBLISHED=$(npm view "$PKG" version 2>/dev/null || echo "none")
+          # Use registry API directly — avoids any npm config interference
+          PUBLISHED=$(curl -sf "https://registry.npmjs.org/${PKG}/latest" \
+            | python3 -c "import json,sys; print(json.load(sys.stdin)['version'])" \
+            2>/dev/null || echo "none")
           echo "current=$CURRENT" >> $GITHUB_OUTPUT
+          echo "published=$PUBLISHED" >> $GITHUB_OUTPUT
           if [ "$CURRENT" = "$PUBLISHED" ]; then
             echo "skip=true" >> $GITHUB_OUTPUT
           else
             echo "skip=false" >> $GITHUB_OUTPUT
           fi
+
+      - uses: actions/setup-node@v4
+        if: steps.version_check.outputs.skip == 'false'
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+          cache: yarn
 
       - name: Install dependencies
         if: steps.version_check.outputs.skip == 'false'
@@ -56,8 +61,6 @@ jobs:
       - name: Publish ${{ steps.version_check.outputs.current }}
         if: steps.version_check.outputs.skip == 'false'
         run: npm publish --access public --provenance
-        # NODE_AUTH_TOKEN intentionally not set — npm uses the OIDC token from
-        # id-token: write + environment: production to authenticate via trusted publisher
 
       - name: Already published
         if: steps.version_check.outputs.skip == 'true'
