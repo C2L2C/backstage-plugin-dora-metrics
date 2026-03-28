@@ -9,18 +9,23 @@ on:
       - 'config.d.ts'
       - 'package.json'
 
+permissions:
+  contents: read
+  id-token: write  # required for npm OIDC trusted publisher
+
 jobs:
   publish:
     name: Publish
     runs-on: ubuntu-latest
-    environment: production
-
-    permissions:
-      contents: read
-      id-token: write  # required for npm OIDC trusted publisher
 
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+          cache: yarn
 
       - name: Check if version is already published
         id: version_check
@@ -37,13 +42,6 @@ jobs:
           else
             echo "skip=false" >> $GITHUB_OUTPUT
           fi
-
-      - uses: actions/setup-node@v4
-        if: steps.version_check.outputs.skip == 'false'
-        with:
-          node-version: 22
-          registry-url: https://registry.npmjs.org
-          cache: yarn
 
       - name: Install dependencies
         if: steps.version_check.outputs.skip == 'false'
