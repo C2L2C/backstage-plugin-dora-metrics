@@ -4,7 +4,7 @@ import { useApi } from '@backstage/core-plugin-api';
 import { useEntity } from '@backstage/plugin-catalog-react';
 import { InfoCard } from '@backstage/core-components';
 import { doraMetricsApiRef } from '../api/types';
-import type { DoraEnvironment, DoraHistoryPoint, DoraMetrics, DoraMetricValue, PrDetail } from '../api/types';
+import type { DoraEnvironment, DoraHistoryPoint, DoraMetrics, DoraMetricValue, DoraTargets, PrDetail } from '../api/types';
 import { RatingBadge } from './ui/badge';
 import { Card, CardLabel, CardFooter, CardDescription } from './ui/card';
 import {
@@ -17,6 +17,16 @@ import {
 import { ExternalLink } from 'lucide-react';
 
 const ANNOTATION_PROJECT_SLUG = 'github.com/project-slug';
+/** Override the global environments list for this specific entity. JSON array of DoraEnvironment objects. */
+const ANNOTATION_ENVIRONMENTS = 'dora-metrics/environments';
+/** Override the global performance targets for this specific entity. JSON object matching DoraTargets. */
+const ANNOTATION_TARGETS = 'dora-metrics/targets';
+
+/** Parse entity annotation overrides. Returns undefined for malformed JSON to fail gracefully. */
+function parseAnnotationJson<T>(raw: string | undefined): T | undefined {
+  if (!raw) return undefined;
+  try { return JSON.parse(raw) as T; } catch { return undefined; }
+}
 
 const DATE_RANGE_OPTIONS = [
   { value: '7',  label: 'Last 7 days' },
@@ -639,6 +649,8 @@ interface ExpandedCardData {
   weekLabels: string[];
   bucketMidMs: number[];
   prs?: PrDetail[];
+  /** Override the section header above the PR list (default: "All deployments"). */
+  prListLabel?: string;
 }
 
 function DetailedOverlay({
@@ -669,7 +681,7 @@ function DetailedOverlay({
     }
   }, [hoveredPrNumber]);
 
-  const { title, metric, description, lowerIsBetter, sparklineValues, sparklineType, sparklineColor, weekLabels, bucketMidMs, prs } = data;
+  const { title, metric, description, lowerIsBetter, sparklineValues, sparklineType, sparklineColor, weekLabels, bucketMidMs, prs, prListLabel } = data;
   const isDeployFreq  = sparklineType === 'bar';
   const displayValue  = metric.unit === 'hours' ? formatDuration(metric.value) : String(metric.value);
   const displayUnit   = metric.unit === 'hours' ? '' : metric.unit;
@@ -776,7 +788,7 @@ function DetailedOverlay({
               <div style={{ fontSize: 10, fontWeight: 700, color: mutedColor, textTransform: 'uppercase',
                 letterSpacing: '0.12em', marginBottom: 12,
                 borderTop: `1px solid ${borderColor}`, paddingTop: 12 }}>
-                All deployments · {prs.length} PRs merged
+                {prListLabel ?? 'All deployments'} · {prs.length} PR{prs.length !== 1 ? 's' : ''}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                 {sortedDates.map(date => (
@@ -972,6 +984,7 @@ function MetricCard({
   sparklineColor,
   weekLabels,
   onExpand,
+  expandLabel,
 }: {
   title: string;
   metric: DoraMetricValue;
@@ -982,6 +995,8 @@ function MetricCard({
   sparklineColor?: string;
   weekLabels?: string[];
   onExpand?: () => void;
+  /** Persistent label shown in the card footer (instead of the hover-only "expand ↗"). */
+  expandLabel?: string;
 }) {
   const theme = useTheme();
   const isDark = theme.palette.type === 'dark';
@@ -1067,6 +1082,16 @@ function MetricCard({
         <span style={{ fontWeight: 600, color: isDark ? '#a1a1aa' : '#52525b' }}>
           {targetLabel}
         </span>
+        {expandLabel && onExpand && (
+          <span style={{
+            fontSize: 10, fontWeight: 700,
+            color: '#FA6400',
+            letterSpacing: '0.04em',
+            marginLeft: 'auto',
+          }}>
+            {expandLabel}
+          </span>
+        )}
       </CardFooter>
     </Card>
   );
@@ -1105,14 +1130,21 @@ export function DoraMetricsContent() {
   const textSecondary = muiTheme.palette.text.secondary;
 
   const projectSlug = entity.metadata.annotations?.[ANNOTATION_PROJECT_SLUG] ?? '';
-  const environments: DoraEnvironment[] = doraApi.getEnvironments();
+  const annotations = entity.metadata.annotations ?? {};
+
+  // Per-repo overrides from catalog-info.yaml annotations
+  const annotationEnvs = parseAnnotationJson<DoraEnvironment[]>(annotations[ANNOTATION_ENVIRONMENTS]);
+  const annotationTargets = parseAnnotationJson<Partial<DoraTargets>>(annotations[ANNOTATION_TARGETS]);
+
+  const environments: DoraEnvironment[] = annotationEnvs ?? doraApi.getEnvironments();
   const defaultEnv = environments[0];
   const defaultDays = doraApi.getDefaultDays();
 
-  const [selectedBranch, setSelectedBranch] = useState<string>(defaultEnv?.branch ?? '');
+  // Use environment name as the selection key (branch can be a multi-value pattern)
+  const [selectedEnvName, setSelectedEnvName] = useState<string>(defaultEnv?.name ?? '');
   const [selectedDays, setSelectedDays] = useState<string>(String(defaultDays));
 
-  const selectedEnv = environments.find(e => e.branch === selectedBranch) ?? defaultEnv;
+  const selectedEnv = environments.find(e => e.name === selectedEnvName) ?? defaultEnv;
   const days = parseInt(selectedDays, 10);
 
   const [metrics, setMetrics] = useState<DoraMetrics | null>(null);
@@ -1140,7 +1172,7 @@ export function DoraMetricsContent() {
     setHistory(null);
 
     doraApi
-      .getMetrics(projectSlug, selectedEnv.branch, selectedEnv.isProduction, selectedEnv.label, days)
+      .getMetrics(projectSlug, selectedEnv, days, annotationTargets ?? undefined)
       .then(data => {
         if (!cancelled) { setMetrics(data); setLoading(false); }
       })
@@ -1149,12 +1181,12 @@ export function DoraMetricsContent() {
       });
 
     doraApi
-      .getHistory(projectSlug, selectedEnv.branch, selectedEnv.isProduction, selectedEnv.label, days)
+      .getHistory(projectSlug, selectedEnv, days)
       .then(data => { if (!cancelled) setHistory(data); })
       .catch(() => { /* history is optional — fail silently */ });
 
     return () => { cancelled = true; };
-  }, [doraApi, projectSlug, selectedEnv?.branch, days]);
+  }, [doraApi, projectSlug, selectedEnv?.name, days]);
 
   if (loading) return <DoraLoadingOverlay />;
 
@@ -1183,8 +1215,10 @@ export function DoraMetricsContent() {
           <div style={{ fontSize: 22, fontWeight: 700, color: textPrimary, letterSpacing: '-0.02em' }}>DORA Metrics</div>
           {selectedEnv && (
             <div style={{ fontSize: 12, color: textSecondary, marginTop: 5 }}>
-              Showing metrics for branch{' '}
-              <strong style={{ color: textPrimary, fontFamily: 'monospace' }}>{selectedEnv.branch}</strong>
+              Showing metrics for{' '}
+              <strong style={{ color: textPrimary }}>{selectedEnv.name}</strong>
+              {' '}—{' '}
+              <span style={{ fontFamily: 'monospace' }}>{selectedEnv.branch}</span>
             </div>
           )}
         </div>
@@ -1193,13 +1227,13 @@ export function DoraMetricsContent() {
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: 16, flexWrap: 'wrap', marginBottom: 20 }}>
           {environments.length > 1 && (
             <div>
-              <FilterLabel>Branch</FilterLabel>
-              <Select value={selectedBranch} onValueChange={setSelectedBranch}>
-                <SelectTrigger><SelectValue placeholder="Select branch" /></SelectTrigger>
+              <FilterLabel>Environment</FilterLabel>
+              <Select value={selectedEnvName} onValueChange={setSelectedEnvName}>
+                <SelectTrigger><SelectValue placeholder="Select environment" /></SelectTrigger>
                 <SelectContent>
                   {environments.map(env => (
-                    <SelectItem key={env.branch} value={env.branch}>
-                      {env.branch} ({env.name})
+                    <SelectItem key={env.name} value={env.name}>
+                      {env.name} ({env.branch})
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -1234,10 +1268,11 @@ export function DoraMetricsContent() {
             title: string, metric: DoraMetricValue, description: string,
             lowerIsBetter: boolean, sparklineValues: number[],
             sparklineType: 'bar' | 'line', sparklineColor: string, prs?: PrDetail[],
+            prListLabel?: string,
           ) => () => setExpanded({
             title, metric, description, lowerIsBetter,
             sparklineValues, sparklineType, sparklineColor,
-            weekLabels: wkLabels, bucketMidMs: bmMs, prs,
+            weekLabels: wkLabels, bucketMidMs: bmMs, prs, prListLabel,
           });
 
           return (
@@ -1304,6 +1339,18 @@ export function DoraMetricsContent() {
                   metric={metrics.numberOfHotfixes}
                   description={`PRs labeled '${selectedEnv?.label ?? 'hotfix'}' merged to production`}
                   lowerIsBetter
+                  expandLabel={metrics.numberOfHotfixes.value > 0 ? `View ${metrics.numberOfHotfixes.value} PR${metrics.numberOfHotfixes.value !== 1 ? 's' : ''} →` : undefined}
+                  onExpand={mkExpand(
+                    'Hotfixes to Production',
+                    metrics.numberOfHotfixes,
+                    `PRs labeled '${selectedEnv?.label ?? 'hotfix'}' merged to production`,
+                    true,
+                    [],
+                    'bar',
+                    '#f87171',
+                    metrics.numberOfHotfixes.slowestPRs,
+                    'All hotfixes',
+                  )}
                 />
               ) : (
                 <NaCard title="Hotfixes to Production" description="Only tracked on production branches" />

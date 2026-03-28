@@ -6,6 +6,7 @@ import {
   DoraMetricValue,
   DoraMetricsApi,
   DoraRating,
+  DoraTargets,
   PrDetail,
 } from './types';
 
@@ -69,6 +70,39 @@ function toPrDetail(pr: GitHubPR, durationHours: number): PrDetail {
   };
 }
 
+/**
+ * Determine whether a branch pattern string is a regex (vs a plain name or
+ * comma-separated list of names).  A string is treated as a regex if it
+ * contains any regex meta-character: | ^ $ [ ] ( ) { } ? + * \
+ */
+function isRegexPattern(pattern: string): boolean {
+  return /[|^$[\](){}?+*\\]/.test(pattern);
+}
+
+/**
+ * Resolve a branch pattern to a concrete list of branch names.
+ *
+ * - Single name  "main"           → ["main"]
+ * - Comma-sep    "main,master"    → ["main", "master"]
+ * - Regex        "^(main|master)$"→ fetched from the repo's branch list and filtered
+ */
+async function resolveBranches(
+  owner: string,
+  repo: string,
+  branchPattern: string,
+  fetchFn: <T>(url: string) => Promise<T>,
+): Promise<string[]> {
+  if (isRegexPattern(branchPattern)) {
+    const repoBranches = await fetchFn<Array<{ name: string }>>(
+      `https://api.github.com/repos/${owner}/${repo}/branches?per_page=100`,
+    );
+    const regex = new RegExp(branchPattern);
+    return repoBranches.map(b => b.name).filter(name => regex.test(name));
+  }
+  // Comma-separated or single branch name
+  return branchPattern.split(',').map(b => b.trim()).filter(Boolean);
+}
+
 export class DoraMetricsClient implements DoraMetricsApi {
   private readonly githubAuthApi: OAuthApi;
   private readonly configApi: ConfigApi;
@@ -90,11 +124,20 @@ export class DoraMetricsClient implements DoraMetricsApi {
       label: e.getOptionalString('label') ?? 'hotfix',
     }));
 
+    // Validate: at most one isProduction environment
+    const prodEnvs = environments.filter(e => e.isProduction);
+    if (prodEnvs.length > 1) {
+      throw new Error(
+        `DORA metrics config error: only one environment may have isProduction: true, ` +
+        `but found ${prodEnvs.length}: ${prodEnvs.map(e => e.name).join(', ')}`,
+      );
+    }
+
     const initialDays =
       cfg?.getOptionalConfig('collection')?.getOptionalNumber('initialDays') ?? 30;
 
     const targetsCfg = cfg?.getOptionalConfig('targets');
-    const targets = {
+    const targets: DoraTargets = {
       deploymentFrequency: targetsCfg?.getOptionalNumber('deploymentFrequency') ?? 7,
       leadTime: targetsCfg?.getOptionalNumber('leadTime') ?? 24,
       changeFailureRate: targetsCfg?.getOptionalNumber('changeFailureRate') ?? 15,
@@ -110,6 +153,10 @@ export class DoraMetricsClient implements DoraMetricsApi {
 
   getDefaultDays(): number {
     return this.getConfig().initialDays;
+  }
+
+  getTargets(): DoraTargets {
+    return this.getConfig().targets;
   }
 
   private async fetchWithAuth<T>(url: string, token: string): Promise<T> {
@@ -129,15 +176,53 @@ export class DoraMetricsClient implements DoraMetricsApi {
     return response.json() as Promise<T>;
   }
 
+  /**
+   * Fetch all merged PRs for an environment, resolving branch patterns and
+   * deduplicating across multiple branches by PR number.
+   */
+  private async fetchMergedPRs(
+    owner: string,
+    repo: string,
+    env: DoraEnvironment,
+    cutoff: Date,
+    token: string,
+  ): Promise<GitHubPR[]> {
+    const boundFetch = <T>(url: string) => this.fetchWithAuth<T>(url, token);
+
+    const branches = await resolveBranches(owner, repo, env.branch, boundFetch);
+
+    const allByNumber = new Map<number, GitHubPR>();
+
+    await Promise.all(
+      branches.map(async branch => {
+        const url =
+          `https://api.github.com/repos/${owner}/${repo}/pulls` +
+          `?state=closed&base=${branch}&per_page=100`;
+        const prs = await boundFetch<GitHubPR[]>(url);
+        for (const pr of prs) {
+          if (pr.merged_at && new Date(pr.merged_at) >= cutoff) {
+            // Keep first occurrence (branches may share PRs — shouldn't happen
+            // for base-branch-filtered queries, but guard anyway)
+            if (!allByNumber.has(pr.number)) {
+              allByNumber.set(pr.number, pr);
+            }
+          }
+        }
+      }),
+    );
+
+    return Array.from(allByNumber.values());
+  }
+
   async getMetrics(
     projectSlug: string,
-    branch: string,
-    isProduction: boolean,
-    label: string,
+    env: DoraEnvironment,
     days: number,
+    targetsOverride?: Partial<DoraTargets>,
   ): Promise<DoraMetrics> {
     const token = await this.githubAuthApi.getAccessToken('repo');
-    const { targets } = this.getConfig();
+    const { targets: configTargets } = this.getConfig();
+    const targets: DoraTargets = { ...configTargets, ...targetsOverride };
 
     const [owner, repo] = projectSlug.split('/');
     if (!owner || !repo) {
@@ -145,17 +230,7 @@ export class DoraMetricsClient implements DoraMetricsApi {
     }
 
     const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-
-    const prsUrl =
-      `https://api.github.com/repos/${owner}/${repo}/pulls` +
-      `?state=closed&base=${branch}&per_page=100`;
-
-    const allPRs = await this.fetchWithAuth<GitHubPR[]>(prsUrl, token);
-
-    const mergedPRs = allPRs.filter(pr => {
-      if (!pr.merged_at) return false;
-      return new Date(pr.merged_at) >= cutoff;
-    });
+    const mergedPRs = await this.fetchMergedPRs(owner, repo, env, cutoff, token);
 
     // --- Deployment Frequency ---
     const deploymentsPerWeek = days > 0 ? (mergedPRs.length / days) * 7 : 0;
@@ -199,7 +274,7 @@ export class DoraMetricsClient implements DoraMetricsApi {
     };
 
     // --- Production-only metrics ---
-    if (!isProduction) {
+    if (!env.isProduction) {
       return {
         deploymentFrequency,
         leadTime,
@@ -210,15 +285,20 @@ export class DoraMetricsClient implements DoraMetricsApi {
     }
 
     const hotfixPRs = mergedPRs.filter(pr =>
-      (pr.labels ?? []).some(l => l.name === label),
+      (pr.labels ?? []).some(l => l.name === env.label),
     );
 
-    // Number of Hotfixes
+    // Number of Hotfixes — sorted newest-first for the expanded list
     const numberOfHotfixes: DoraMetricValue = {
       value: hotfixPRs.length,
       unit: 'PRs',
       rating: computeRating(hotfixPRs.length, 0, true),
       target: 0,
+      slowestPRs: [...hotfixPRs]
+        .sort((a, b) => new Date(b.merged_at!).getTime() - new Date(a.merged_at!).getTime())
+        .map(pr => toPrDetail(pr,
+          (new Date(pr.merged_at!).getTime() - new Date(pr.created_at).getTime()) / (1000 * 60 * 60)
+        )),
     };
 
     // Change Failure Rate = fix PRs / all merged PRs (DORA standard: always 0–100%)
@@ -263,9 +343,7 @@ export class DoraMetricsClient implements DoraMetricsApi {
 
   async getHistory(
     projectSlug: string,
-    branch: string,
-    isProduction: boolean,
-    label: string,
+    env: DoraEnvironment,
     days: number,
   ): Promise<DoraHistoryPoint[]> {
     const token = await this.githubAuthApi.getAccessToken('repo');
@@ -273,11 +351,7 @@ export class DoraMetricsClient implements DoraMetricsApi {
     if (!owner || !repo) throw new Error(`Invalid project slug "${projectSlug}".`);
 
     const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-    const prsUrl =
-      `https://api.github.com/repos/${owner}/${repo}/pulls` +
-      `?state=closed&base=${branch}&per_page=100`;
-    const allPRs = await this.fetchWithAuth<GitHubPR[]>(prsUrl, token);
-    const mergedPRs = allPRs.filter(pr => pr.merged_at && new Date(pr.merged_at) >= cutoff);
+    const mergedPRs = await this.fetchMergedPRs(owner, repo, env, cutoff, token);
 
     // Scale bucket size so we always get ~7 data points regardless of date range
     const bucketDays = Math.max(1, Math.round(days / 7));
@@ -302,8 +376,8 @@ export class DoraMetricsClient implements DoraMetricsApi {
       let changeFailureRate: number | undefined;
       let mttrHours: number | undefined;
 
-      if (isProduction) {
-        const hotfixPRs = weekPRs.filter(pr => pr.labels.some(l => l.name === label));
+      if (env.isProduction) {
+        const hotfixPRs = weekPRs.filter(pr => pr.labels.some(l => l.name === env.label));
         changeFailureRate =
           weekPRs.length > 0 ? Math.round((hotfixPRs.length / weekPRs.length) * 1000) / 10 : 0;
         const hotfixDurations = hotfixPRs.map(pr =>

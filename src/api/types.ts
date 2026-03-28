@@ -22,9 +22,21 @@ export interface DoraMetricValue {
 
 export interface DoraEnvironment {
   name: string;
+  /**
+   * Raw branch pattern as configured — a single branch name, a comma-separated
+   * list ("main,master"), or a JavaScript regex string ("^(main|master)$").
+   * The client resolves this to a concrete list of branches at query time.
+   */
   branch: string;
   isProduction: boolean;
   label: string;
+}
+
+export interface DoraTargets {
+  deploymentFrequency: number;
+  leadTime: number;
+  changeFailureRate: number;
+  mttr: number;
 }
 
 export interface DoraMetrics {
@@ -50,18 +62,16 @@ export interface DoraHistoryPoint {
 export interface DoraMetricsApi {
   getEnvironments(): DoraEnvironment[];
   getDefaultDays(): number;
+  getTargets(): DoraTargets;
   getMetrics(
     projectSlug: string,
-    branch: string,
-    isProduction: boolean,
-    label: string,
+    env: DoraEnvironment,
     days: number,
+    targetsOverride?: Partial<DoraTargets>,
   ): Promise<DoraMetrics>;
   getHistory(
     projectSlug: string,
-    branch: string,
-    isProduction: boolean,
-    label: string,
+    env: DoraEnvironment,
     days: number,
   ): Promise<DoraHistoryPoint[]>;
 }

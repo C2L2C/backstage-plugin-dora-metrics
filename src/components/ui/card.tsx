@@ -81,6 +81,9 @@ export function CardFooter({ children }: { children: React.ReactNode }) {
       borderTop: `1px solid ${isDark ? '#27272a' : '#e4e4e7'}`,
       paddingTop: 10,
       marginTop: 4,
+      display: 'flex',
+      alignItems: 'center',
+      gap: 8,
     }}>
       {children}
     </div>
