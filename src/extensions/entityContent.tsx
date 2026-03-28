@@ -1,3 +1,4 @@
+import React from 'react';
 import { EntityContentBlueprint } from '@backstage/plugin-catalog-react/alpha';
 
 export const doraMetricsEntityContentExtension = EntityContentBlueprint.make({
