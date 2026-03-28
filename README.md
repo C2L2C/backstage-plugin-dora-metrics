@@ -1,5 +1,9 @@
 # @c2l2c/backstage-plugin-dora-metrics
 
+[![CI](https://github.com/C2L2C/backstage-plugin-dora-metrics/actions/workflows/ci.yml/badge.svg)](https://github.com/C2L2C/backstage-plugin-dora-metrics/actions/workflows/ci.yml)
+[![Publish](https://github.com/C2L2C/backstage-plugin-dora-metrics/actions/workflows/publish.yml/badge.svg)](https://github.com/C2L2C/backstage-plugin-dora-metrics/actions/workflows/publish.yml)
+[![npm](https://img.shields.io/npm/v/@c2l2c/backstage-plugin-dora-metrics)](https://www.npmjs.com/package/@c2l2c/backstage-plugin-dora-metrics)
+
 A Backstage frontend plugin that surfaces **DORA metrics per catalog entity** — scoped to the specific service you're viewing, not your whole org.
 
 For each catalog service annotated with a GitHub repo, this plugin adds a **DORA Metrics tab** that computes all four key metrics directly from GitHub PRs via OAuth — no extra backend or data pipeline required:

@@ -17,25 +17,20 @@ jobs:
 
     permissions:
       contents: read
-      id-token: write  # required for npm provenance (trusted publisher)
+      id-token: write  # required for npm OIDC trusted publisher
 
     steps:
       - uses: actions/checkout@v4
-
-      # Do NOT set registry-url here — setup-node would write an .npmrc with
-      # _authToken=${NODE_AUTH_TOKEN} which overrides OIDC auth and causes 404.
-      # The registry is configured explicitly in the publish step instead.
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: yarn
 
       - name: Check if version is already published
         id: version_check
         run: |
           CURRENT=$(node -p "require('./package.json').version")
           PKG=$(node -p "require('./package.json').name")
-          PUBLISHED=$(npm view "$PKG" version 2>/dev/null || echo "none")
+          # Use registry API directly — avoids any npm config interference
+          PUBLISHED=$(curl -sf "https://registry.npmjs.org/${PKG}/latest" \
+            | python3 -c "import json,sys; print(json.load(sys.stdin)['version'])" \
+            2>/dev/null || echo "none")
           echo "current=$CURRENT" >> $GITHUB_OUTPUT
           echo "published=$PUBLISHED" >> $GITHUB_OUTPUT
           if [ "$CURRENT" = "$PUBLISHED" ]; then
@@ -43,6 +38,13 @@ jobs:
           else
             echo "skip=false" >> $GITHUB_OUTPUT
           fi
+
+      - uses: actions/setup-node@v4
+        if: steps.version_check.outputs.skip == 'false'
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+          cache: yarn
 
       - name: Install dependencies
         if: steps.version_check.outputs.skip == 'false'
@@ -58,7 +60,7 @@ jobs:
 
       - name: Publish ${{ steps.version_check.outputs.current }}
         if: steps.version_check.outputs.skip == 'false'
-        run: npm publish --access public --provenance --registry https://registry.npmjs.org/
+        run: npm publish --access public --provenance
 
       - name: Already published
         if: steps.version_check.outputs.skip == 'true'
