@@ -890,7 +890,7 @@ function DetailedOverlay({
                         background: isHov
                           ? (isDark ? '#18181f' : '#f0f0ff')
                           : (isDark ? '#111114' : '#f4f4f6'),
-                        border: `1px solid ${isHov ? sparklineColor + '55' : borderColor}`,
+                        border: `1px solid ${isHov ? `${sparklineColor}55` : borderColor}`,
                         display: 'flex', flexDirection: 'column', gap: 5,
                         transition: 'background 0.12s, border-color 0.12s',
                         cursor: 'default',
@@ -1155,18 +1155,19 @@ export function DoraMetricsContent() {
   const [expanded, setExpanded] = useState<ExpandedCardData | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
+
     if (!projectSlug) {
       setError(new Error(`Entity is missing the "${ANNOTATION_PROJECT_SLUG}" annotation.`));
       setLoading(false);
-      return;
+      return () => { cancelled = true; };
     }
     if (!selectedEnv) {
       setError(new Error('No environments configured for DORA metrics.'));
       setLoading(false);
-      return;
+      return () => { cancelled = true; };
     }
 
-    let cancelled = false;
     setLoading(true);
     setError(null);
     setHistory(null);
@@ -1186,7 +1187,9 @@ export function DoraMetricsContent() {
       .catch(() => { /* history is optional — fail silently */ });
 
     return () => { cancelled = true; };
-  }, [doraApi, projectSlug, selectedEnv?.name, days]);
+    // selectedEnv?.name is intentional — avoids re-render loops from object identity changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doraApi, projectSlug, selectedEnv?.name, days, annotationTargets]);
 
   if (loading) return <DoraLoadingOverlay />;
 
