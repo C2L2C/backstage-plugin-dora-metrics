@@ -1,3 +1,4 @@
+import React from 'react';
 import type { DoraRating } from '../../api/types';
 
 const RATING_STYLES: Record<DoraRating, { background: string; color: string; border: string }> = {
