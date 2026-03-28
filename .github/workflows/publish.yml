@@ -18,12 +18,14 @@ jobs:
       id-token: write  # required for npm provenance (trusted publisher)
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v6
+      # Do NOT set registry-url here — setup-node would write an .npmrc with
+      # _authToken=${NODE_AUTH_TOKEN} which overrides OIDC auth and causes 404.
+      # The registry is configured explicitly in the publish step instead.
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
-          registry-url: https://registry.npmjs.org
           cache: yarn
 
       - name: Check if version is already published
@@ -54,7 +56,7 @@ jobs:
 
       - name: Publish ${{ steps.version_check.outputs.current }}
         if: steps.version_check.outputs.skip == 'false'
-        run: npm publish --access public --provenance
+        run: npm publish --access public --provenance --registry https://registry.npmjs.org/
 
       - name: Already published
         if: steps.version_check.outputs.skip == 'true'
