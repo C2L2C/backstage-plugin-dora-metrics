@@ -15,7 +15,7 @@ jobs:
 
     permissions:
       contents: read
-      id-token: write  # required for npm provenance
+      id-token: write  # required for npm provenance (trusted publisher)
 
     steps:
       - uses: actions/checkout@v6
@@ -24,7 +24,7 @@ jobs:
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
-          cache: npm
+          cache: yarn
 
       - name: Check if version is already published
         id: version_check
@@ -42,11 +42,11 @@ jobs:
 
       - name: Install dependencies
         if: steps.version_check.outputs.skip == 'false'
-        run: npm ci --legacy-peer-deps
+        run: yarn install --frozen-lockfile
 
       - name: Test
         if: steps.version_check.outputs.skip == 'false'
-        run: npm run test -- --watchAll=false --ci
+        run: yarn test --watchAll=false --ci
 
       - name: Generate declaration files
         if: steps.version_check.outputs.skip == 'false'

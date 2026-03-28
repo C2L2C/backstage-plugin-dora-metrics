@@ -22,19 +22,19 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: ${{ matrix.node-version }}
-          cache: npm
+          cache: yarn
 
       - name: Install dependencies
-        run: npm ci --legacy-peer-deps
+        run: yarn install --frozen-lockfile
 
       - name: Lint
-        run: npm run lint
+        run: yarn lint
 
       - name: Test
-        run: npm run test -- --watchAll=false --ci
+        run: yarn test --watchAll=false --ci
 
       - name: Generate declaration files
         run: npx tsc --project tsconfig.build.json
 
       - name: Build
-        run: npm run build
+        run: yarn build
