@@ -22,12 +22,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Debug OIDC claims (compare with npm trusted publisher config)
+        run: |
+          TOKEN=$(curl -sf \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sigstore" \
+            | python3 -c "import json,sys; print(json.load(sys.stdin)['value'])")
+          PAYLOAD=$(echo "$TOKEN" | cut -d. -f2 | base64 -d 2>/dev/null || \
+                    echo "$TOKEN" | cut -d. -f2 | base64 -di 2>/dev/null)
+          echo "$PAYLOAD" | python3 -c "
+          import json, sys
+          d = json.load(sys.stdin)
+          keys = ['sub', 'repository', 'repository_owner', 'workflow', 'job_workflow_ref', 'environment', 'ref']
+          print(json.dumps({k: d.get(k,'(not present)') for k in keys}, indent=2))
+          "
+
       - name: Check if version is already published
         id: version_check
         run: |
           CURRENT=$(node -p "require('./package.json').version")
           PKG=$(node -p "require('./package.json').name")
-          # Use registry API directly — avoids any npm config interference
           PUBLISHED=$(curl -sf "https://registry.npmjs.org/${PKG}/latest" \
             | python3 -c "import json,sys; print(json.load(sys.stdin)['version'])" \
             2>/dev/null || echo "none")
@@ -61,8 +75,6 @@ jobs:
       - name: Publish ${{ steps.version_check.outputs.current }}
         if: steps.version_check.outputs.skip == 'false'
         run: npm publish --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Already published
         if: steps.version_check.outputs.skip == 'true'
