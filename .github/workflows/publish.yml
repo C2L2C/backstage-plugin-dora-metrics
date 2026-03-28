@@ -22,24 +22,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Debug OIDC claims (compare with npm trusted publisher config)
-        run: |
-          TOKEN=$(curl -sf \
-            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sigstore" \
-            | python3 -c "import json,sys; print(json.load(sys.stdin)['value'])")
-          python3 - "$TOKEN" <<'PYEOF'
-          import sys, json, base64
-          token = sys.argv[1]
-          segment = token.split('.')[1]
-          # base64url → base64 with padding
-          padded = segment + '=' * (-len(segment) % 4)
-          padded = padded.replace('-', '+').replace('_', '/')
-          d = json.loads(base64.b64decode(padded))
-          keys = ['sub', 'repository', 'repository_owner', 'workflow', 'job_workflow_ref', 'environment', 'ref']
-          print(json.dumps({k: d.get(k,'(not present)') for k in keys}, indent=2))
-          PYEOF
-
       - name: Check if version is already published
         id: version_check
         run: |
