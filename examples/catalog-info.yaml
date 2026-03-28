@@ -1,0 +1,45 @@
+## Example: per-repo overrides via catalog-info.yaml annotations
+##
+## These annotations let individual services opt in to different environments
+## or targets without touching the global app-config.yaml.
+## Values are JSON strings. Partial `dora-metrics/targets` overrides are merged
+## with the global targets — only the keys you specify are replaced.
+
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: my-service
+  annotations:
+    github.com/project-slug: my-org/my-service
+
+    ## Override environments for this repo.
+    ## Useful when this service deploys from a branch that differs from the
+    ## org-wide default (e.g. it still uses "master" instead of "main").
+    dora-metrics/environments: |
+      [
+        {
+          "name": "Production",
+          "branch": "master",
+          "isProduction": true,
+          "label": "hotfix,revert"
+        },
+        {
+          "name": "Staging",
+          "branch": "staging",
+          "isProduction": false
+        }
+      ]
+
+    ## Override DORA targets for this repo only.
+    ## This service ships less frequently than the org average, so we set a
+    ## lower deployment frequency target and a more generous lead time.
+    dora-metrics/targets: |
+      {
+        "deploymentFrequency": 2,
+        "leadTime": 72
+      }
+
+spec:
+  type: service
+  lifecycle: production
+  owner: team-platform

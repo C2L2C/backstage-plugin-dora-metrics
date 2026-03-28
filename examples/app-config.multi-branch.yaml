@@ -1,0 +1,29 @@
+## Example: production environment tracked with comma-separated branch names
+##
+## Use this when your repos have inconsistent default branch names — some use
+## "main", others still use "master". PRs merged to either branch are included
+## and deduplicated by PR number so no deployment is counted twice.
+
+app:
+  doraMetrics:
+    collection:
+      initialDays: 30
+
+    environments:
+      - name: Production
+        # PRs merged to "main" or "master" both count as production deployments
+        branch: "main,master"
+        isProduction: true
+        # Regex label pattern: matches "hotfix", "hotfix/urgent", "hotfix-123", etc.
+        label: "^hotfix"
+
+      - name: Staging
+        # Also covers repos that use "develop" or "dev" as the staging branch
+        branch: "develop,dev"
+        isProduction: false
+
+    targets:
+      deploymentFrequency: 1   # deploy at least once per week
+      leadTime: 48             # hours
+      changeFailureRate: 10    # %
+      mttr: 4                  # hours

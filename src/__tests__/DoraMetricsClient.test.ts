@@ -651,3 +651,55 @@ describe('getTargets', () => {
     expect(targets.mttr).toBe(1);
   });
 });
+
+// ---------------------------------------------------------------------------
+// getMetrics — label patterns (comma-separated and regex)
+// ---------------------------------------------------------------------------
+
+describe('getMetrics — label patterns', () => {
+  const days = 30;
+
+  it('matches a hotfix PR using a comma-separated label pattern', async () => {
+    const prs = [
+      makePR({ number: 1, created_at: daysAgo(5), merged_at: daysAgo(2), labels: [{ name: 'fix' }] }),
+      makePR({ number: 2, created_at: daysAgo(5), merged_at: daysAgo(3) }),
+    ];
+    const client = makeClient(prs);
+    const env: DoraEnvironment = { ...PROD_ENV, label: 'hotfix,fix,bug' };
+    const result = await client.getMetrics('org/repo', env, days);
+    expect(result.numberOfHotfixes!.value).toBe(1);
+  });
+
+  it('matches multiple hotfix PRs using a comma-separated label pattern', async () => {
+    const prs = [
+      makePR({ number: 1, created_at: daysAgo(5), merged_at: daysAgo(2), labels: [{ name: 'hotfix' }] }),
+      makePR({ number: 2, created_at: daysAgo(5), merged_at: daysAgo(3), labels: [{ name: 'bug' }] }),
+      makePR({ number: 3, created_at: daysAgo(5), merged_at: daysAgo(4) }),
+    ];
+    const client = makeClient(prs);
+    const env: DoraEnvironment = { ...PROD_ENV, label: 'hotfix,fix,bug' };
+    const result = await client.getMetrics('org/repo', env, days);
+    expect(result.numberOfHotfixes!.value).toBe(2);
+  });
+
+  it('matches a hotfix PR using a regex label pattern', async () => {
+    const prs = [
+      makePR({ number: 1, created_at: daysAgo(5), merged_at: daysAgo(2), labels: [{ name: 'hotfix/urgent' }] }),
+      makePR({ number: 2, created_at: daysAgo(5), merged_at: daysAgo(3) }),
+    ];
+    const client = makeClient(prs);
+    const env: DoraEnvironment = { ...PROD_ENV, label: '^hotfix' };
+    const result = await client.getMetrics('org/repo', env, days);
+    expect(result.numberOfHotfixes!.value).toBe(1);
+  });
+
+  it('does not match a PR whose labels do not satisfy the pattern', async () => {
+    const prs = [
+      makePR({ number: 1, created_at: daysAgo(5), merged_at: daysAgo(2), labels: [{ name: 'feature' }] }),
+    ];
+    const client = makeClient(prs);
+    const env: DoraEnvironment = { ...PROD_ENV, label: 'hotfix,fix' };
+    const result = await client.getMetrics('org/repo', env, days);
+    expect(result.numberOfHotfixes!.value).toBe(0);
+  });
+});

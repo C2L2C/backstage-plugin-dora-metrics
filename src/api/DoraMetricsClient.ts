@@ -71,12 +71,31 @@ function toPrDetail(pr: GitHubPR, durationHours: number): PrDetail {
 }
 
 /**
- * Determine whether a branch pattern string is a regex (vs a plain name or
+ * Determine whether a pattern string is a regex (vs a plain name or
  * comma-separated list of names).  A string is treated as a regex if it
  * contains any regex meta-character: | ^ $ [ ] ( ) { } ? + * \
  */
 function isRegexPattern(pattern: string): boolean {
   return /[|^$[\](){}?+*\\]/.test(pattern);
+}
+
+/**
+ * Return true if any of the PR's labels match the label pattern.
+ *
+ * Supports the same three formats as branch patterns:
+ *   - Single name:       "hotfix"
+ *   - Comma-separated:  "hotfix,fix,bug"
+ *   - JavaScript regex: "^(hotfix|fix)$"
+ */
+function matchesLabel(prLabels: Array<{ name: string }>, labelPattern: string): boolean {
+  if (!labelPattern) return false;
+  const names = prLabels.map(l => l.name);
+  if (isRegexPattern(labelPattern)) {
+    const regex = new RegExp(labelPattern);
+    return names.some(n => regex.test(n));
+  }
+  const patterns = labelPattern.split(',').map(l => l.trim()).filter(Boolean);
+  return names.some(n => patterns.includes(n));
 }
 
 /**
@@ -285,7 +304,7 @@ export class DoraMetricsClient implements DoraMetricsApi {
     }
 
     const hotfixPRs = mergedPRs.filter(pr =>
-      (pr.labels ?? []).some(l => l.name === env.label),
+      matchesLabel(pr.labels ?? [], env.label),
     );
 
     // Number of Hotfixes — sorted newest-first for the expanded list
@@ -377,7 +396,7 @@ export class DoraMetricsClient implements DoraMetricsApi {
       let mttrHours: number | undefined;
 
       if (env.isProduction) {
-        const hotfixPRs = weekPRs.filter(pr => pr.labels.some(l => l.name === env.label));
+        const hotfixPRs = weekPRs.filter(pr => matchesLabel(pr.labels, env.label));
         changeFailureRate =
           weekPRs.length > 0 ? Math.round((hotfixPRs.length / weekPRs.length) * 1000) / 10 : 0;
         const hotfixDurations = hotfixPRs.map(pr =>

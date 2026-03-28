@@ -80,14 +80,23 @@ app:
     collection:
       initialDays: 30
 
-    # Define the environments / branches to track
+    # Define the environments / branches to track.
+    # Exactly ONE environment may set isProduction: true.
     environments:
       - name: Production
-        branch: main
+        branch: main             # single branch name
         isProduction: true
-        label: hotfix          # PR label for production failures (used for CFR/MTTR)
+        label: hotfix            # PR label for production failures (used for CFR/MTTR)
       - name: Staging
         branch: staging
+        isProduction: false
+      - name: Any main
+        # Comma-separated list — PRs merged to any of these branches are included
+        branch: "main,master"
+        isProduction: false
+      - name: Release branches
+        # JavaScript regex — resolved against the repo's actual branch list at query time
+        branch: "^release/.*"
         isProduction: false
 
     # Optional: override DORA benchmark targets
@@ -96,7 +105,65 @@ app:
       leadTime: 24             # hours (Elite ≤ 24h)
       changeFailureRate: 5     # % (Elite ≤ 5%)
       mttr: 1                  # hours (Elite ≤ 1h)
+
+    # Optional: enable mock data for local development (skips GitHub API calls)
+    debug: false
 ```
+
+### Branch and label patterns
+
+Both the `branch` and `label` fields accept the same three formats:
+
+| Format | Example | Behaviour |
+|--------|---------|-----------|
+| Single name | `main` / `hotfix` | Exact match |
+| Comma-separated | `main,master` / `hotfix,fix,bug` | Matches any name in the list |
+| JavaScript regex | `^release/.*` / `^hotfix` | Regex test against each value |
+
+A string is treated as a regex if it contains any of these characters: `| ^ $ [ ] ( ) { } ? + * \`
+
+For `branch`: when multiple branches match, PRs are fetched from all of them and deduplicated by PR number. Regex patterns are resolved against the repo's live branch list via the GitHub Branches API at query time.
+
+For `label`: a PR is classified as a hotfix if **any** of its GitHub labels match the pattern.
+
+### Environment constraints
+
+- You may define any number of environments.
+- **Exactly one** environment may have `isProduction: true`. The plugin throws a configuration error at startup if this constraint is violated.
+- Change Failure Rate, MTTR, and Hotfixes to Production are only calculated for the production environment.
+
+### Per-repo overrides via catalog annotations
+
+You can override environments and targets on a per-service basis in `catalog-info.yaml` without changing the global config:
+
+```yaml
+metadata:
+  annotations:
+    github.com/project-slug: my-org/my-repo
+
+    # Override the environments list for this repo only (JSON)
+    dora-metrics/environments: |
+      [
+        { "name": "Production", "branch": "main", "isProduction": true, "label": "hotfix" },
+        { "name": "Staging",    "branch": "staging", "isProduction": false }
+      ]
+
+    # Override DORA targets for this repo only (JSON, partial overrides supported)
+    dora-metrics/targets: |
+      { "deploymentFrequency": 2, "leadTime": 48 }
+```
+
+Annotation values are parsed as JSON. Partial `targets` overrides are merged with the global targets — only the keys you specify are replaced.
+
+### Example configs
+
+Ready-to-use example configs are in the [`examples/`](examples/) directory:
+
+| File | Description |
+|------|-------------|
+| [`app-config.regex-branch.yaml`](examples/app-config.regex-branch.yaml) | Production tracked with a regex branch pattern (`^release/.*`) and a comma-separated label pattern |
+| [`app-config.multi-branch.yaml`](examples/app-config.multi-branch.yaml) | Production tracked across `main,master`; staging across `develop,dev`; hotfix label as regex |
+| [`catalog-info.yaml`](examples/catalog-info.yaml) | Per-repo environment and target overrides via `catalog-info.yaml` annotations |
 
 ---
 

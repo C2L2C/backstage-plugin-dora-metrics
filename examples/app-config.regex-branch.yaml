@@ -1,0 +1,30 @@
+## Example: production environment tracked with a regex branch pattern
+##
+## Use this when your production branch name is not fixed — e.g. you deploy
+## from versioned release branches like "release/1.2.3".
+## The regex is resolved at query time against the repository's live branch list
+## via the GitHub Branches API. All matching branches are fetched and their PRs
+## deduplicated by PR number before metrics are computed.
+
+app:
+  doraMetrics:
+    collection:
+      initialDays: 30
+
+    environments:
+      - name: Production
+        # Matches any branch named "release/<anything>" — e.g. release/1.0.0, release/2024-03
+        branch: "^release/.*"
+        isProduction: true
+        # Any PR labelled "hotfix" OR "revert" counts as a production failure
+        label: "hotfix,revert"
+
+      - name: Staging
+        branch: staging
+        isProduction: false
+
+    targets:
+      deploymentFrequency: 7   # deploys per week (Elite ≥ 7)
+      leadTime: 24             # hours (Elite ≤ 24h)
+      changeFailureRate: 5     # % (Elite ≤ 5%)
+      mttr: 1                  # hours (Elite ≤ 1h)

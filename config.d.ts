@@ -36,7 +36,14 @@ export interface Config {
          * @visibility frontend
          */
         isProduction?: boolean;
-        /** Label on PRs that represent production failures (hotfixes). Defaults to "hotfix". @visibility frontend */
+        /**
+         * Label(s) on PRs that represent production failures (hotfixes).
+         * Defaults to "hotfix". Accepts the same three formats as `branch`:
+         *   - Single label:        "hotfix"
+         *   - Comma-separated:     "hotfix,fix,bug"
+         *   - JavaScript regex:    "^(hotfix|fix)$"
+         * @visibility frontend
+         */
         label?: string;
         /** Label on PRs that represent planned feature deployments. @visibility frontend */
         featureLabel?: string;
