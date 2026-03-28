@@ -55,8 +55,6 @@ jobs:
       - name: Publish ${{ steps.version_check.outputs.current }}
         if: steps.version_check.outputs.skip == 'false'
         run: npm publish --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Already published
         if: steps.version_check.outputs.skip == 'true'
