@@ -1,6 +1,6 @@
 {
   "name": "@c2l2c/backstage-plugin-dora-metrics",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "A Backstage frontend plugin that displays DORA metrics (Deployment Frequency, Lead Time, Change Failure Rate, MTTR) for catalog entities via the GitHub API.",
   "main": "dist/index.cjs.js",
   "module": "dist/index.esm.js",
@@ -10,8 +10,8 @@
     "configSchema": "config.d.ts"
   },
   "exports": {
-    ".": "./src/index.ts",
-    "./alpha": "./src/alpha.ts",
+    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.esm.js" },
+    "./alpha": { "types": "./dist/alpha.d.ts", "default": "./dist/alpha.esm.js" },
     "./package.json": "./package.json"
   },
   "files": [
