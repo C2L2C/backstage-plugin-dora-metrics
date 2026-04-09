@@ -6,9 +6,9 @@
   "module": "dist/index.esm.js",
   "types": "dist/index.d.ts",
   "backstage": {
-    "role": "frontend-plugin",
-    "configSchema": "config.d.ts"
+    "role": "frontend-plugin"
   },
+  "configSchema": "config.d.ts",
   "exports": {
     ".": { "types": "./dist/index.d.ts", "default": "./dist/index.esm.js" },
     "./alpha": { "types": "./dist/alpha.d.ts", "default": "./dist/alpha.esm.js" },
