@@ -10,9 +10,22 @@
   },
   "configSchema": "config.d.ts",
   "exports": {
-    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.esm.js" },
-    "./alpha": { "types": "./dist/alpha.d.ts", "default": "./dist/alpha.esm.js" },
+    ".": "./src/index.ts",
+    "./alpha": "./src/alpha.ts",
     "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.esm.js"
+      },
+      "./alpha": {
+        "types": "./dist/alpha.d.ts",
+        "default": "./dist/alpha.esm.js"
+      },
+      "./package.json": "./package.json"
+    }
   },
   "files": [
     "dist",
