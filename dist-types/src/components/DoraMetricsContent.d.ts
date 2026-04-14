@@ -1,2 +1,1 @@
-import React from 'react';
-export declare function DoraMetricsContent(): React.JSX.Element | null;
+export declare function DoraMetricsContent(): import("react/jsx-runtime").JSX.Element | null;
