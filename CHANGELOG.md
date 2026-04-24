@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here.
 
+## [0.3.3] - 2026-04-09
+
+### Fixed
+- `exports` field in `package.json` pointed to `./src/` (not included in the published package) instead of `./dist/`, causing `Module not found` errors for consumers
+- `configSchema` declared inside `backstage` object instead of at package.json root level, preventing Backstage from collecting the schema and exposing `app.doraMetrics` config to the frontend
+
 ## [0.3.1] - 2026-03-28
 
 ### Added
