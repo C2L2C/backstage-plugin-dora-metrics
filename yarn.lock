@@ -9771,9 +9771,9 @@ lru-cache@^9.0.0:
   integrity sha512-ERJq3FOzJTxBbFjZ7iDs+NiK4VI9Wz+RdrrAB8dio1oV+YvdPzUEE4QNiT2VD51DkIbCYRUUzCRkssXCHqSnKQ==
 
 lucide-react@^1.7.0:
-  version "1.14.0"
-  resolved "https://registry.yarnpkg.com/lucide-react/-/lucide-react-1.14.0.tgz#3c3867749f5ff4eeb5a6f423557ec6a50521366f"
-  integrity sha512-+1mdWcfSJVUsaTIjN9zoezmUhfXo5l0vP7ekBMPo3jcS/aIkxHnXqAPsByszMZx/Y8oQBRJxJx5xg+RH3urzxA==
+  version "1.16.0"
+  resolved "https://registry.yarnpkg.com/lucide-react/-/lucide-react-1.16.0.tgz#8c19a757982ed28e28afd0da9a950d3152e4b7e5"
+  integrity sha512-dYwyPzb4MEKpGUmNYk3WKWPnMrHs3FKM+q94kAnJrcDIqqn1hq2xY8scaS2ovsOCM5D51ey2gaRG3PBb1vgoYQ==
 
 luxon@^3.0.0, luxon@^3.2.1:
   version "3.7.2"
