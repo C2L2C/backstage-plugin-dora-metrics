@@ -6,7 +6,11 @@
   "module": "dist/index.esm.js",
   "types": "dist/index.d.ts",
   "backstage": {
-    "role": "frontend-plugin"
+    "pluginId": "dora-metrics",
+    "role": "frontend-plugin",
+    "pluginPackages": [
+      "@c2l2c/backstage-plugin-dora-metrics"
+    ]
   },
   "configSchema": "config.d.ts",
   "exports": {
@@ -38,7 +42,8 @@
     "lint": "backstage-cli package lint",
     "test": "backstage-cli package test",
     "clean": "backstage-cli package clean",
-    "prepack": "yarn build"
+    "prepack": "backstage-cli package prepack",
+    "postpack": "backstage-cli package postpack"
   },
   "keywords": [
     "backstage",
