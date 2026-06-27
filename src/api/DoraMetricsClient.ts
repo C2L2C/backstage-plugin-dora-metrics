@@ -15,6 +15,7 @@ interface GitHubPR {
   title: string;
   html_url: string;
   created_at: string;
+  updated_at: string;
   merged_at: string | null;
   closed_at: string | null;
   labels: Array<{ name: string }>;
@@ -91,11 +92,11 @@ function matchesLabel(prLabels: Array<{ name: string }>, labelPattern: string): 
   if (!labelPattern) return false;
   const names = prLabels.map(l => l.name);
   if (isRegexPattern(labelPattern)) {
-    const regex = new RegExp(labelPattern);
+    const regex = new RegExp(labelPattern, 'i');
     return names.some(n => regex.test(n));
   }
-  const patterns = labelPattern.split(',').map(l => l.trim()).filter(Boolean);
-  return names.some(n => patterns.includes(n));
+  const patterns = labelPattern.split(',').map(l => l.trim().toLowerCase()).filter(Boolean);
+  return names.some(n => patterns.includes(n.toLowerCase()));
 }
 
 /**
@@ -214,18 +215,29 @@ export class DoraMetricsClient implements DoraMetricsApi {
 
     await Promise.all(
       branches.map(async branch => {
-        const url =
-          `https://api.github.com/repos/${owner}/${repo}/pulls` +
-          `?state=closed&base=${branch}&per_page=100`;
-        const prs = await boundFetch<GitHubPR[]>(url);
-        for (const pr of prs) {
-          if (pr.merged_at && new Date(pr.merged_at) >= cutoff) {
-            // Keep first occurrence (branches may share PRs — shouldn't happen
-            // for base-branch-filtered queries, but guard anyway)
-            if (!allByNumber.has(pr.number)) {
-              allByNumber.set(pr.number, pr);
+        let hasMore = true;
+        for (let page = 1; hasMore; page++) {
+          const url =
+            `https://api.github.com/repos/${owner}/${repo}/pulls` +
+            `?state=closed&base=${encodeURIComponent(branch)}&per_page=100&page=${page}&sort=updated&direction=desc`;
+          const prs = await boundFetch<GitHubPR[]>(url);
+
+          for (const pr of prs) {
+            if (pr.merged_at && new Date(pr.merged_at) >= cutoff) {
+              // Keep first occurrence — branches may share PRs
+              if (!allByNumber.has(pr.number)) {
+                allByNumber.set(pr.number, pr);
+              }
             }
           }
+
+          // PRs are sorted by updated_at desc. Since merged_at <= updated_at,
+          // once the oldest updated_at on a page is before cutoff, no subsequent
+          // page can contain a PR merged within the window — stop early.
+          const oldestUpdatedMs = prs.length > 0
+            ? Math.min(...prs.map(pr => new Date(pr.updated_at).getTime()))
+            : 0;
+          hasMore = prs.length >= 100 && oldestUpdatedMs >= cutoff.getTime();
         }
       }),
     );
@@ -408,8 +420,10 @@ export class DoraMetricsClient implements DoraMetricsApi {
             : 0;
       }
 
+      // Label with bucket end (capped at now) so all views show "today" as the last label.
+      const labelDate = new Date(Math.min(weekEnd.getTime(), Date.now()));
       buckets.push({
-        weekLabel: weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        weekLabel: labelDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
         bucketMidMs: Math.round((weekStart.getTime() + weekEnd.getTime()) / 2),
         deploymentCount: weekPRs.length,
         leadTimeHours: Math.round(avgLeadTime * 10) / 10,

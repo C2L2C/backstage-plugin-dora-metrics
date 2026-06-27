@@ -9,6 +9,7 @@ function makePR(overrides: {
   number?: number;
   created_at: string;
   merged_at: string | null;
+  updated_at?: string;
   labels?: Array<{ name: string }>;
   base?: string; // simulated base branch (used only in fetch mock routing)
 }) {
@@ -17,6 +18,8 @@ function makePR(overrides: {
     title: `PR #${overrides.number ?? 1}`,
     html_url: `https://github.com/org/repo/pull/${overrides.number ?? 1}`,
     created_at: overrides.created_at,
+    // updated_at is always >= merged_at; default to merged_at (or created_at if unmerged)
+    updated_at: overrides.updated_at ?? overrides.merged_at ?? overrides.created_at,
     merged_at: overrides.merged_at,
     closed_at: overrides.merged_at,
     labels: overrides.labels ?? [],
@@ -653,6 +656,100 @@ describe('getTargets', () => {
 });
 
 // ---------------------------------------------------------------------------
+// fetchMergedPRs — pagination
+// ---------------------------------------------------------------------------
+
+describe('fetchMergedPRs — pagination', () => {
+  function makeClientWithPages(pages: ReturnType<typeof makePR>[][]) {
+    const githubAuthApi = { getAccessToken: jest.fn().mockResolvedValue('fake-token') };
+    const configApi = {
+      getConfig: () => ({
+        getOptionalConfig: () => ({
+          getOptionalConfigArray: () => [],
+          getOptionalConfig: () => ({ getOptionalNumber: () => undefined }),
+        }),
+      }),
+    };
+
+    let callIndex = 0;
+    global.fetch = jest.fn().mockImplementation(() => {
+      const page = pages[callIndex] ?? [];
+      callIndex++;
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(page) });
+    }) as jest.Mock;
+
+    return new DoraMetricsClient(githubAuthApi as any, configApi as any);
+  }
+
+  it('fetches subsequent pages when first page has exactly 100 results', async () => {
+    // Page 1: 100 PRs all within window, all with updated_at >= cutoff
+    const page1 = Array.from({ length: 100 }, (_, i) =>
+      makePR({ number: i + 1, created_at: daysAgo(10), merged_at: daysAgo(i % 5 + 1) }),
+    );
+    // Page 2: 2 PRs within window (triggers end-of-results since < 100)
+    const page2 = [
+      makePR({ number: 101, created_at: daysAgo(25), merged_at: daysAgo(20) }),
+      makePR({ number: 102, created_at: daysAgo(25), merged_at: daysAgo(21) }),
+    ];
+
+    const client = makeClientWithPages([page1, page2]);
+    const result = await client.getMetrics('org/repo', STAGING_ENV, 30);
+
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+    expect(result.deploymentFrequency.slowestPRs).toHaveLength(102);
+  });
+
+  it('stops paginating when oldest updated_at on a page is before the cutoff', async () => {
+    // Page 1: 100 PRs — last one has updated_at before the 30-day cutoff
+    const page1 = Array.from({ length: 100 }, (_, i) => {
+      const isLast = i === 99;
+      return makePR({
+        number: i + 1,
+        created_at: daysAgo(10),
+        merged_at: isLast ? daysAgo(35) : daysAgo(i % 5 + 1),
+        // updated_at on the last PR is 35 days ago — before the 30d cutoff
+        updated_at: isLast ? daysAgo(35) : daysAgo(i % 5 + 1),
+      });
+    });
+
+    const client = makeClientWithPages([page1]);
+    await client.getMetrics('org/repo', STAGING_ENV, 30);
+
+    // Should stop after page 1 — no page 2 fetch
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('collects all merged PRs across multiple pages', async () => {
+    const make100 = (startNum: number, mergedDaysAgo: number) =>
+      Array.from({ length: 100 }, (_, i) =>
+        makePR({ number: startNum + i, created_at: daysAgo(10), merged_at: daysAgo(mergedDaysAgo) }),
+      );
+
+    const page1 = make100(1, 2);    // 100 PRs merged 2 days ago
+    const page2 = make100(101, 5);  // 100 PRs merged 5 days ago (< 100 would stop, but exactly 100 continues)
+    const page3 = [makePR({ number: 201, created_at: daysAgo(10), merged_at: daysAgo(10) })]; // last page
+
+    const client = makeClientWithPages([page1, page2, page3]);
+    const result = await client.getMetrics('org/repo', STAGING_ENV, 30);
+
+    expect(global.fetch).toHaveBeenCalledTimes(3);
+    expect(result.deploymentFrequency.slowestPRs).toHaveLength(201);
+  });
+
+  it('uses sort=updated&direction=desc query params', async () => {
+    const client = makeClientWithPages([[
+      makePR({ number: 1, created_at: daysAgo(5), merged_at: daysAgo(2) }),
+    ]]);
+    await client.getMetrics('org/repo', STAGING_ENV, 30);
+
+    const calledUrl = (global.fetch as jest.Mock).mock.calls[0][0] as string;
+    expect(calledUrl).toContain('sort=updated');
+    expect(calledUrl).toContain('direction=desc');
+    expect(calledUrl).toContain('page=1');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // getMetrics — label patterns (comma-separated and regex)
 // ---------------------------------------------------------------------------
 
@@ -701,5 +798,76 @@ describe('getMetrics — label patterns', () => {
     const env: DoraEnvironment = { ...PROD_ENV, label: 'hotfix,fix' };
     const result = await client.getMetrics('org/repo', env, days);
     expect(result.numberOfHotfixes!.value).toBe(0);
+  });
+
+  it('matches label case-insensitively — "Hotfix" matches pattern "hotfix"', async () => {
+    const prs = [
+      makePR({ number: 1, created_at: daysAgo(5), merged_at: daysAgo(2), labels: [{ name: 'Hotfix' }] }),
+      makePR({ number: 2, created_at: daysAgo(5), merged_at: daysAgo(3) }),
+    ];
+    const client = makeClient(prs);
+    const result = await client.getMetrics('org/repo', PROD_ENV, days);
+    expect(result.numberOfHotfixes!.value).toBe(1);
+  });
+
+  it('matches label case-insensitively — "HOTFIX" matches pattern "hotfix"', async () => {
+    const prs = [
+      makePR({ number: 1, created_at: daysAgo(5), merged_at: daysAgo(2), labels: [{ name: 'HOTFIX' }] }),
+    ];
+    const client = makeClient(prs);
+    const result = await client.getMetrics('org/repo', PROD_ENV, days);
+    expect(result.numberOfHotfixes!.value).toBe(1);
+  });
+
+  it('matches label case-insensitively — "Fix" matches comma-separated pattern "hotfix,fix"', async () => {
+    const prs = [
+      makePR({ number: 1, created_at: daysAgo(5), merged_at: daysAgo(2), labels: [{ name: 'Fix' }] }),
+      makePR({ number: 2, created_at: daysAgo(5), merged_at: daysAgo(3), labels: [{ name: 'HOTFIX' }] }),
+    ];
+    const client = makeClient(prs);
+    const env: DoraEnvironment = { ...PROD_ENV, label: 'hotfix,fix' };
+    const result = await client.getMetrics('org/repo', env, days);
+    expect(result.numberOfHotfixes!.value).toBe(2);
+  });
+
+  it('regex label match is case-insensitive', async () => {
+    const prs = [
+      makePR({ number: 1, created_at: daysAgo(5), merged_at: daysAgo(2), labels: [{ name: 'Hotfix/urgent' }] }),
+    ];
+    const client = makeClient(prs);
+    const env: DoraEnvironment = { ...PROD_ENV, label: '^hotfix' };
+    const result = await client.getMetrics('org/repo', env, days);
+    expect(result.numberOfHotfixes!.value).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getHistory — weekLabel uses bucket end date
+// ---------------------------------------------------------------------------
+
+describe('getHistory — weekLabel uses bucket end date', () => {
+  it('the last bucket label reflects a date near today, not the bucket start', async () => {
+    const client = makeClient([]);
+    const result = await client.getHistory('org/repo', STAGING_ENV, 30);
+    const lastBucket = result[result.length - 1];
+
+    // With end-date labelling the last bucket's label should represent a date
+    // within 4 days of today (the maximum bucket width for a 30-day range).
+    const today = new Date();
+    const labelDate = new Date(`${lastBucket.weekLabel} ${today.getFullYear()}`);
+    const diffDays = Math.abs(today.getTime() - labelDate.getTime()) / 86400_000;
+    expect(diffDays).toBeLessThan(5);
+  });
+
+  it('the last bucket label for a 7-day range is today or yesterday', async () => {
+    const client = makeClient([]);
+    const result = await client.getHistory('org/repo', STAGING_ENV, 7);
+    const lastBucket = result[result.length - 1];
+
+    const today = new Date();
+    const labelDate = new Date(`${lastBucket.weekLabel} ${today.getFullYear()}`);
+    const diffDays = Math.abs(today.getTime() - labelDate.getTime()) / 86400_000;
+    // 7-day range has 1-day buckets; last bucket end = today
+    expect(diffDays).toBeLessThan(2);
   });
 });

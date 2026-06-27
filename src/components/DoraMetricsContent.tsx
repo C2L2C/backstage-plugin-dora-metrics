@@ -4,6 +4,7 @@ import { useApi } from '@backstage/core-plugin-api';
 import { useEntity } from '@backstage/plugin-catalog-react';
 import { InfoCard } from '@backstage/core-components';
 import { doraMetricsApiRef } from '../api/types';
+import { niceHourTicks, niceCountTicks } from '../api/chartUtils';
 import type { DoraEnvironment, DoraHistoryPoint, DoraMetrics, DoraMetricValue, DoraTargets, PrDetail } from '../api/types';
 import { RatingBadge } from './ui/badge';
 import { Card, CardLabel, CardFooter, CardDescription } from './ui/card';
@@ -397,6 +398,7 @@ function DetailedChart({
   color,
   type,
   formatValue,
+  tickUnit,
   prs,
   days,
   hoveredPrNumber,
@@ -408,6 +410,7 @@ function DetailedChart({
   color: string;
   type: 'bar' | 'line';
   formatValue: (v: number) => string;
+  tickUnit?: 'hours' | 'count';
   prs?: PrDetail[];
   days: number;
   hoveredPrNumber?: number | null;
@@ -424,11 +427,17 @@ function DetailedChart({
   const cW = W - PAD.left - PAD.right;
   const cH = H - PAD.top - PAD.bottom;
 
-  // Y scale: based on bucket values only so the trend line is clearly readable.
-  // PR dots that fall outside this range are rendered clamped to chart area.
-  const dataMax = Math.max(...values, 0.01);
-  const dataMin = type === 'line' ? Math.min(...values, 0) : 0;
-  const dataRange = dataMax - dataMin || dataMax || 1;
+  // Y scale: nice tick-aligned range so axis labels are clean intervals.
+  const prMaxDuration = prs && prs.length > 0 ? Math.max(...prs.map(p => p.durationHours)) : 0;
+  const rawDataMax = Math.max(...values.filter(v => v > 0), prMaxDuration, 0.01);
+  const yTicks = tickUnit === 'hours'
+    ? niceHourTicks(rawDataMax)
+    : tickUnit === 'count'
+    ? niceCountTicks(rawDataMax)
+    : [0, 0.25, 0.5, 0.75, 1].map(t => t * rawDataMax);
+  const dataMin = 0;
+  const dataMax = yTicks[yTicks.length - 1];
+  const dataRange = dataMax - dataMin || 1;
   const yScale = (v: number) => cH - ((v - dataMin) / dataRange) * cH;
 
   // Shared timestamp-based x-axis
@@ -449,7 +458,6 @@ function DetailedChart({
   const gap  = 6;
   const barW = values.length > 1 ? (cW - gap * (values.length - 1)) / values.length : cW;
 
-  const yTicks = [0, 0.25, 0.5, 0.75, 1].map(t => dataMin + t * dataRange);
   const gridColor  = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)';
   const axisColor  = isDark ? '#3f3f46' : '#d4d4d8';
   const labelColor = isDark ? '#52525b' : '#a1a1aa';
@@ -520,9 +528,11 @@ function DetailedChart({
           })
         ) : (
           <>
-            {areaPath && <path d={areaPath} fill={`url(#${gradId})`} />}
-            <path d={linePath} fill="none" stroke={color} strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
-            {pts.map(([x, y], i) => (
+            {/* When prs are provided, show scatter-only (no line/area/bucket dots).
+                For CFR (no prs), keep a minimal line + non-zero bucket dots. */}
+            {!prs && areaPath && <path d={areaPath} fill={`url(#${gradId})`} />}
+            {!prs && <path d={linePath} fill="none" stroke={color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />}
+            {!prs && pts.map(([x, y], i) => values[i] > 0 && (
               <circle key={i} cx={x} cy={y}
                 r={i === hoverIdx ? 5.5 : 4}
                 fill={isDark ? '#0f0f12' : '#ffffff'} stroke={color}
@@ -561,11 +571,7 @@ function DetailedChart({
                     onPrHover?.(pr.number);
                   }}
                   onMouseLeave={() => { setTooltip(null); onPrHover?.(null); }}>
-                  {trendPt && (
-                    <line x1={px} y1={py} x2={trendPt[0]} y2={trendPt[1]}
-                      stroke={color} strokeWidth={isHov ? 1 : 0.5}
-                      strokeDasharray="2 3" opacity={isHov ? 0.5 : 0.2} />
-                  )}
+                  {/* connector removed — no bucket-average dot to connect to */}
                   <circle cx={px} cy={py} r={isHov ? 11 : 7} fill={color} opacity={isHov ? 0.2 : 0.1} />
                   <circle cx={px} cy={py} r={isHov ? 5.5 : 3.5}
                     fill={isHov ? color : (isDark ? '#1a1a20' : '#fff')}
@@ -646,6 +652,7 @@ interface ExpandedCardData {
   sparklineValues: number[];
   sparklineType: 'bar' | 'line';
   sparklineColor: string;
+  tickUnit?: 'hours' | 'count';
   weekLabels: string[];
   bucketMidMs: number[];
   prs?: PrDetail[];
@@ -681,7 +688,7 @@ function DetailedOverlay({
     }
   }, [hoveredPrNumber]);
 
-  const { title, metric, description, lowerIsBetter, sparklineValues, sparklineType, sparklineColor, weekLabels, bucketMidMs, prs, prListLabel } = data;
+  const { title, metric, description, lowerIsBetter, sparklineValues, sparklineType, sparklineColor, tickUnit, weekLabels, bucketMidMs, prs, prListLabel } = data;
   const isDeployFreq  = sparklineType === 'bar';
   const displayValue  = metric.unit === 'hours' ? formatDuration(metric.value) : String(metric.value);
   const displayUnit   = metric.unit === 'hours' ? '' : metric.unit;
@@ -773,6 +780,7 @@ function DetailedOverlay({
               values={sparklineValues} weekLabels={weekLabels}
               bucketMidMs={bucketMidMs}
               color={sparklineColor} type={sparklineType}
+              tickUnit={tickUnit}
               formatValue={formatVal} prs={isDeployFreq ? undefined : prs} days={days}
               hoveredPrNumber={hoveredPrNumber} onPrHover={setHoveredPrNumber}
             />
@@ -1271,12 +1279,23 @@ export function DoraMetricsContent() {
             title: string, metric: DoraMetricValue, description: string,
             lowerIsBetter: boolean, sparklineValues: number[],
             sparklineType: 'bar' | 'line', sparklineColor: string, prs?: PrDetail[],
-            prListLabel?: string,
+            prListLabel?: string, tickUnit?: 'hours' | 'count',
           ) => () => setExpanded({
             title, metric, description, lowerIsBetter,
-            sparklineValues, sparklineType, sparklineColor,
+            sparklineValues, sparklineType, sparklineColor, tickUnit,
             weekLabels: wkLabels, bucketMidMs: bmMs, prs, prListLabel,
           });
+
+          // Per-bucket hotfix counts derived from hotfix PRs + bucket midpoints.
+          const hotfixSparkData: number[] = bmMs.map(() => 0);
+          if (bmMs.length > 0 && metrics?.numberOfHotfixes?.slowestPRs) {
+            for (const pr of metrics.numberOfHotfixes.slowestPRs) {
+              const t = new Date(pr.mergedAt).getTime();
+              let bestIdx = 0, bestDist = Infinity;
+              bmMs.forEach((mid, i) => { const d = Math.abs(t - mid); if (d < bestDist) { bestDist = d; bestIdx = i; } });
+              hotfixSparkData[bestIdx]++;
+            }
+          }
 
           return (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
@@ -1290,7 +1309,7 @@ export function DoraMetricsContent() {
                 weekLabels={wkLabels}
                 onExpand={mkExpand('Deployment Frequency', metrics.deploymentFrequency,
                   'How often code is deployed to this branch', false, deployData, 'bar', '#FA6400',
-                  metrics.deploymentFrequency.slowestPRs)}
+                  metrics.deploymentFrequency.slowestPRs, undefined, 'count')}
               />
               <MetricCard
                 title="Lead Time for Changes"
@@ -1302,7 +1321,7 @@ export function DoraMetricsContent() {
                 sparklineColor="#818cf8"
                 weekLabels={wkLabels}
                 onExpand={mkExpand('Lead Time for Changes', metrics.leadTime,
-                  'Average time from PR creation to merge', true, leadData, 'line', '#818cf8', metrics.leadTime.slowestPRs)}
+                  'Average time from PR creation to merge', true, leadData, 'line', '#818cf8', metrics.leadTime.slowestPRs, undefined, 'hours')}
               />
               {metrics.changeFailureRate !== null ? (
                 <MetricCard
@@ -1315,7 +1334,7 @@ export function DoraMetricsContent() {
                   sparklineColor="#f87171"
                   weekLabels={wkLabels}
                   onExpand={mkExpand('Change Failure Rate', metrics.changeFailureRate,
-                    '% of all merged PRs that were hotfixes', true, cfrData, 'line', '#f87171')}
+                    '% of all merged PRs that were hotfixes', true, cfrData, 'line', '#f87171', undefined, undefined, 'count')}
                 />
               ) : (
                 <NaCard title="Change Failure Rate" description="Only tracked on production branches" />
@@ -1331,7 +1350,7 @@ export function DoraMetricsContent() {
                   sparklineColor="#fbbf24"
                   weekLabels={wkLabels}
                   onExpand={mkExpand('Mean Time to Restore', metrics.mttr,
-                    'Avg time from hotfix PR open to merge', true, mttrData, 'line', '#fbbf24', metrics.mttr.slowestPRs)}
+                    'Avg time from hotfix PR open to merge', true, mttrData, 'line', '#fbbf24', metrics.mttr.slowestPRs, undefined, 'hours')}
                 />
               ) : (
                 <NaCard title="Mean Time to Restore" description="Only tracked on production branches" />
@@ -1348,11 +1367,12 @@ export function DoraMetricsContent() {
                     metrics.numberOfHotfixes,
                     `PRs labeled '${selectedEnv?.label ?? 'hotfix'}' merged to production`,
                     true,
-                    [],
+                    hotfixSparkData,
                     'bar',
                     '#f87171',
                     metrics.numberOfHotfixes.slowestPRs,
                     'All hotfixes',
+                    'count',
                   )}
                 />
               ) : (
