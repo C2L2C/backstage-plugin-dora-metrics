@@ -51,9 +51,9 @@ jobs:
         if: steps.version_check.outputs.skip == 'false'
         run: yarn test --watchAll=false --ci
 
-      - name: Generate declaration files
+      - name: Build
         if: steps.version_check.outputs.skip == 'false'
-        run: npx tsc --project tsconfig.build.json
+        run: yarn build
 
       - name: Publish ${{ steps.version_check.outputs.current }}
         if: steps.version_check.outputs.skip == 'false'
