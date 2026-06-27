@@ -6,6 +6,11 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
+    ignore:
+      # React 19 types break react-markdown@8 (transitive via @backstage/core-components).
+      # Re-enable once the Backstage ecosystem catches up.
+      - dependency-name: "@types/react"
+        update-types: ["version-update:semver-major"]
     groups:
       backstage:
         patterns:

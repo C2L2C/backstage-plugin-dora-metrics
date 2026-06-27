@@ -1,7 +1,8 @@
 import React from 'react';
+import type { ExtensionDefinition } from '@backstage/frontend-plugin-api';
 import { EntityContentBlueprint } from '@backstage/plugin-catalog-react/alpha';
 
-export const doraMetricsEntityContentExtension = EntityContentBlueprint.make({
+export const doraMetricsEntityContentExtension: ExtensionDefinition<any> = EntityContentBlueprint.make({
   params: {
     path: 'dora-metrics',
     title: 'DORA Metrics',
@@ -13,4 +14,4 @@ export const doraMetricsEntityContentExtension = EntityContentBlueprint.make({
         <m.DoraMetricsContent />
       )),
   },
-});
+}) as ExtensionDefinition<any>;
