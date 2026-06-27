@@ -215,8 +215,8 @@ export class DoraMetricsClient implements DoraMetricsApi {
 
     await Promise.all(
       branches.map(async branch => {
-        let page = 1;
-        while (true) {
+        let hasMore = true;
+        for (let page = 1; hasMore; page++) {
           const url =
             `https://api.github.com/repos/${owner}/${repo}/pulls` +
             `?state=closed&base=${encodeURIComponent(branch)}&per_page=100&page=${page}&sort=updated&direction=desc`;
@@ -237,8 +237,7 @@ export class DoraMetricsClient implements DoraMetricsApi {
           const oldestUpdatedMs = prs.length > 0
             ? Math.min(...prs.map(pr => new Date(pr.updated_at).getTime()))
             : 0;
-          if (prs.length < 100 || oldestUpdatedMs < cutoff.getTime()) break;
-          page++;
+          hasMore = prs.length >= 100 && oldestUpdatedMs >= cutoff.getTime();
         }
       }),
     );
