@@ -63,6 +63,8 @@ export interface DoraMetricsApi {
   getEnvironments(): DoraEnvironment[];
   getDefaultDays(): number;
   getTargets(): DoraTargets;
+  /** Web base URL of the configured GitHub instance (e.g. "https://github.com"). */
+  getGithubBaseUrl(): string;
   getMetrics(
     projectSlug: string,
     env: DoraEnvironment,

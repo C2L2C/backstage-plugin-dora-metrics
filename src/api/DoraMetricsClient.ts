@@ -81,6 +81,19 @@ function isRegexPattern(pattern: string): boolean {
 }
 
 /**
+ * Derive the GitHub REST API base URL from a web base URL.
+ *   - github.com          → https://api.github.com
+ *   - *.ghe.com (Cloud)   → https://api.<host>
+ *   - other (GHE Server)  → https://<host>/api/v3
+ */
+function deriveApiBaseUrl(webUrl: string): string {
+  const { protocol, host } = new URL(webUrl);
+  if (host === 'github.com') return 'https://api.github.com';
+  if (host.endsWith('.ghe.com')) return `${protocol}//api.${host}`;
+  return `${protocol}//${host}/api/v3`;
+}
+
+/**
  * Return true if any of the PR's labels match the label pattern.
  *
  * Supports the same three formats as branch patterns:
@@ -110,11 +123,12 @@ async function resolveBranches(
   owner: string,
   repo: string,
   branchPattern: string,
+  apiBaseUrl: string,
   fetchFn: <T>(url: string) => Promise<T>,
 ): Promise<string[]> {
   if (isRegexPattern(branchPattern)) {
     const repoBranches = await fetchFn<Array<{ name: string }>>(
-      `https://api.github.com/repos/${owner}/${repo}/branches?per_page=100`,
+      `${apiBaseUrl}/repos/${owner}/${repo}/branches?per_page=100`,
     );
     const regex = new RegExp(branchPattern);
     return repoBranches.map(b => b.name).filter(name => regex.test(name));
@@ -135,6 +149,9 @@ export class DoraMetricsClient implements DoraMetricsApi {
   private getConfig() {
     const appCfg = this.configApi.getConfig('app');
     const cfg = appCfg.getOptionalConfig('doraMetrics');
+
+    const githubUrl = (cfg?.getOptionalString('githubUrl') ?? 'https://github.com').replace(/\/+$/, '');
+    const apiBaseUrl = deriveApiBaseUrl(githubUrl);
 
     const rawEnvs = cfg?.getOptionalConfigArray('environments') ?? [];
     const environments: DoraEnvironment[] = rawEnvs.map(e => ({
@@ -164,7 +181,7 @@ export class DoraMetricsClient implements DoraMetricsApi {
       mttr: targetsCfg?.getOptionalNumber('mttr') ?? 1,
     };
 
-    return { environments, initialDays, targets };
+    return { environments, initialDays, targets, githubUrl, apiBaseUrl };
   }
 
   getEnvironments(): DoraEnvironment[] {
@@ -175,6 +192,10 @@ export class DoraMetricsClient implements DoraMetricsApi {
     return this.getConfig().initialDays;
   }
 
+
+  getGithubBaseUrl(): string {
+    return this.getConfig().githubUrl;
+  }
   getTargets(): DoraTargets {
     return this.getConfig().targets;
   }
@@ -206,10 +227,11 @@ export class DoraMetricsClient implements DoraMetricsApi {
     env: DoraEnvironment,
     cutoff: Date,
     token: string,
+    apiBaseUrl: string,
   ): Promise<GitHubPR[]> {
     const boundFetch = <T>(url: string) => this.fetchWithAuth<T>(url, token);
 
-    const branches = await resolveBranches(owner, repo, env.branch, boundFetch);
+    const branches = await resolveBranches(owner, repo, env.branch, apiBaseUrl, boundFetch);
 
     const allByNumber = new Map<number, GitHubPR>();
 
@@ -218,7 +240,7 @@ export class DoraMetricsClient implements DoraMetricsApi {
         let hasMore = true;
         for (let page = 1; hasMore; page++) {
           const url =
-            `https://api.github.com/repos/${owner}/${repo}/pulls` +
+            `${apiBaseUrl}/repos/${owner}/${repo}/pulls` +
             `?state=closed&base=${encodeURIComponent(branch)}&per_page=100&page=${page}&sort=updated&direction=desc`;
           const prs = await boundFetch<GitHubPR[]>(url);
 
@@ -252,7 +274,7 @@ export class DoraMetricsClient implements DoraMetricsApi {
     targetsOverride?: Partial<DoraTargets>,
   ): Promise<DoraMetrics> {
     const token = await this.githubAuthApi.getAccessToken('repo');
-    const { targets: configTargets } = this.getConfig();
+    const { targets: configTargets, apiBaseUrl } = this.getConfig();
     const targets: DoraTargets = { ...configTargets, ...targetsOverride };
 
     const [owner, repo] = projectSlug.split('/');
@@ -261,7 +283,7 @@ export class DoraMetricsClient implements DoraMetricsApi {
     }
 
     const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-    const mergedPRs = await this.fetchMergedPRs(owner, repo, env, cutoff, token);
+    const mergedPRs = await this.fetchMergedPRs(owner, repo, env, cutoff, token, apiBaseUrl);
 
     // --- Deployment Frequency ---
     const deploymentsPerWeek = days > 0 ? (mergedPRs.length / days) * 7 : 0;
@@ -378,11 +400,12 @@ export class DoraMetricsClient implements DoraMetricsApi {
     days: number,
   ): Promise<DoraHistoryPoint[]> {
     const token = await this.githubAuthApi.getAccessToken('repo');
+    const { apiBaseUrl } = this.getConfig();
     const [owner, repo] = projectSlug.split('/');
     if (!owner || !repo) throw new Error(`Invalid project slug "${projectSlug}".`);
 
     const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-    const mergedPRs = await this.fetchMergedPRs(owner, repo, env, cutoff, token);
+    const mergedPRs = await this.fetchMergedPRs(owner, repo, env, cutoff, token, apiBaseUrl);
 
     // Scale bucket size so we always get ~7 data points regardless of date range
     const bucketDays = Math.max(1, Math.round(days / 7));

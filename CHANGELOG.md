@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here.
 
+## [0.5.0]
+
+### Added
+- **Configurable GitHub URL**: new `app.doraMetrics.githubUrl` option (default `https://github.com`) to support GitHub Enterprise instances. Used for all API requests, author profile links, and other GitHub references. The REST API base URL is derived automatically — `github.com` → `https://api.github.com`, `*.ghe.com` (Cloud) → `https://api.<host>`, and other hosts (GHE Server) → `https://<host>/api/v3`
+- `getGithubBaseUrl()` method on `DoraMetricsApi`
+
 ## [0.3.3] - 2026-04-09
 
 ### Fixed

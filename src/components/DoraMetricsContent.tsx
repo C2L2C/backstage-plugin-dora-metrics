@@ -671,6 +671,7 @@ function DetailedOverlay({
 }) {
   const theme = useTheme();
   const isDark = theme.palette.type === 'dark';
+  const githubBaseUrl = useApi(doraMetricsApiRef).getGithubBaseUrl();
   const [hoveredPrNumber, setHoveredPrNumber] = useState<number | null>(null);
   const prRowRefs = useRef<Map<number, HTMLDivElement>>(new Map());
 
@@ -852,7 +853,7 @@ function DetailedOverlay({
                                   {pr.author[0].toUpperCase()}
                                 </div>
                               )}
-                              <a href={`https://github.com/${pr.author}`} target="_blank" rel="noopener noreferrer"
+                              <a href={`${githubBaseUrl}/${pr.author}`} target="_blank" rel="noopener noreferrer"
                                 style={{ fontSize: 10, fontWeight: 500, color: mutedColor,
                                   textDecoration: 'none', letterSpacing: '0.01em' }}
                                 onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#FA6400'; }}

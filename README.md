@@ -84,6 +84,13 @@ app:
     collection:
       initialDays: 30
 
+    # Optional: base URL of the GitHub instance (default: https://github.com).
+    # Set this for GitHub Enterprise. The REST API base URL is derived automatically:
+    #   github.com        → https://api.github.com
+    #   *.ghe.com (Cloud) → https://api.<host>   (e.g. https://api.va.ghe.com)
+    #   other (GHE Server)→ https://<host>/api/v3
+    githubUrl: https://github.com
+
     # Define the environments / branches to track.
     # Exactly ONE environment may set isProduction: true.
     environments:
