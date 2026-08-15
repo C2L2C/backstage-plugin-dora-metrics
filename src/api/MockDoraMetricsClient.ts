@@ -46,6 +46,10 @@ export class MockDoraMetricsClient implements DoraMetricsApi {
     return MOCK_TARGETS;
   }
 
+  getGithubBaseUrl(): string {
+    return 'https://github.com';
+  }
+
   async getMetrics(
     _projectSlug: string,
     env: DoraEnvironment,

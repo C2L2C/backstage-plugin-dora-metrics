@@ -59,6 +59,7 @@ function makeClient(
       getOptionalConfig: (key: string) => {
         if (key === 'doraMetrics') {
           return {
+            getOptionalString: (k: string) => (config as any)[k] ?? undefined,
             getOptionalConfigArray: (k: string) => {
               if (k === 'environments') {
                 return (config.environments as any[]).map(e => ({
@@ -314,6 +315,7 @@ describe('getMetrics — calculations', () => {
     const configApi = {
       getConfig: () => ({
         getOptionalConfig: () => ({
+          getOptionalString: () => undefined,
           getOptionalConfigArray: () => [],
           getOptionalConfig: () => ({ getOptionalNumber: () => undefined }),
         }),
@@ -415,6 +417,7 @@ describe('getMetrics — comma-separated branch pattern', () => {
     const configApi = {
       getConfig: () => ({
         getOptionalConfig: () => ({
+          getOptionalString: () => undefined,
           getOptionalConfigArray: () => [],
           getOptionalConfig: () => ({ getOptionalNumber: () => undefined }),
         }),
@@ -444,6 +447,7 @@ describe('getMetrics — comma-separated branch pattern', () => {
     const configApi = {
       getConfig: () => ({
         getOptionalConfig: () => ({
+          getOptionalString: () => undefined,
           getOptionalConfigArray: () => [],
           getOptionalConfig: () => ({ getOptionalNumber: () => undefined }),
         }),
@@ -487,6 +491,7 @@ describe('getMetrics — regex branch pattern', () => {
     const configApi = {
       getConfig: () => ({
         getOptionalConfig: () => ({
+          getOptionalString: () => undefined,
           getOptionalConfigArray: () => [],
           getOptionalConfig: () => ({ getOptionalNumber: () => undefined }),
         }),
@@ -521,6 +526,7 @@ describe('getConfig — isProduction validation', () => {
               { getString: (f: string) => ({ name: 'Also Prod', branch: 'master' }[f] ?? ''), getOptionalBoolean: () => true, getOptionalString: () => undefined },
             ];
           },
+          getOptionalString: () => undefined,
           getOptionalConfig: () => ({ getOptionalNumber: () => undefined }),
         }),
       }),
@@ -656,6 +662,57 @@ describe('getTargets', () => {
 });
 
 // ---------------------------------------------------------------------------
+// githubUrl — configurable GitHub instance
+// ---------------------------------------------------------------------------
+
+describe('githubUrl configuration', () => {
+  it('defaults to https://github.com', () => {
+    const client = makeClient([]);
+    expect(client.getGithubBaseUrl()).toBe('https://github.com');
+  });
+
+  it('exposes the configured web base URL', () => {
+    const client = makeClient([], { githubUrl: 'https://va.ghe.com' });
+    expect(client.getGithubBaseUrl()).toBe('https://va.ghe.com');
+  });
+
+  it('strips trailing slashes from the configured URL', () => {
+    const client = makeClient([], { githubUrl: 'https://va.ghe.com/' });
+    expect(client.getGithubBaseUrl()).toBe('https://va.ghe.com');
+  });
+
+  it('uses api.github.com for github.com API requests', async () => {
+    const prs = [makePR({ number: 1, created_at: daysAgo(5), merged_at: daysAgo(2) })];
+    const client = makeClient(prs);
+    await client.getMetrics('org/repo', STAGING_ENV, 30);
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining('https://api.github.com/repos/org/repo/pulls'),
+      expect.anything(),
+    );
+  });
+
+  it('derives api.<host> for *.ghe.com Cloud instances', async () => {
+    const prs = [makePR({ number: 1, created_at: daysAgo(5), merged_at: daysAgo(2) })];
+    const client = makeClient(prs, { githubUrl: 'https://va.ghe.com' });
+    await client.getMetrics('org/repo', STAGING_ENV, 30);
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining('https://api.va.ghe.com/repos/org/repo/pulls'),
+      expect.anything(),
+    );
+  });
+
+  it('derives <host>/api/v3 for GitHub Enterprise Server instances', async () => {
+    const prs = [makePR({ number: 1, created_at: daysAgo(5), merged_at: daysAgo(2) })];
+    const client = makeClient(prs, { githubUrl: 'https://github.mycompany.com' });
+    await client.getMetrics('org/repo', STAGING_ENV, 30);
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining('https://github.mycompany.com/api/v3/repos/org/repo/pulls'),
+      expect.anything(),
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
 // fetchMergedPRs — pagination
 // ---------------------------------------------------------------------------
 
@@ -665,6 +722,7 @@ describe('fetchMergedPRs — pagination', () => {
     const configApi = {
       getConfig: () => ({
         getOptionalConfig: () => ({
+          getOptionalString: () => undefined,
           getOptionalConfigArray: () => [],
           getOptionalConfig: () => ({ getOptionalNumber: () => undefined }),
         }),

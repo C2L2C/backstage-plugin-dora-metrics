@@ -12,6 +12,17 @@ export interface Config {
        */
       debug?: boolean;
       /**
+       * Base URL of the GitHub instance to use. Defaults to "https://github.com".
+       * Set this to a GitHub Enterprise URL (e.g. "https://xyz.ghe.com") to point
+       * all API requests and links at that instance. The REST API base URL is
+       * derived automatically:
+       *   - github.com          → https://api.github.com
+       *   - *.ghe.com (Cloud)   → https://api.<host>
+       *   - other (GHE Server)  → https://<host>/api/v3
+       * @visibility frontend
+       */
+      githubUrl?: string;
+      /**
        * Environments to track. At most one environment may have isProduction: true.
        * @visibility frontend
        */
