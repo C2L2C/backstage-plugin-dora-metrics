@@ -17,6 +17,10 @@ jobs:
   publish:
     name: Publish
     runs-on: ubuntu-latest
+    env:
+      # setup-node writes ${NODE_AUTH_TOKEN} into .npmrc when registry-url is set.
+      # Yarn crashes if the var is unset. Set empty — npm uses OIDC for auth.
+      NODE_AUTH_TOKEN: ''
 
     steps:
       - uses: actions/checkout@v7
